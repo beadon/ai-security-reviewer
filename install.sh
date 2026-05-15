@@ -18,13 +18,41 @@ IS_MAC=false
 
 has() { command -v "$1" &>/dev/null; }
 
+# Ensure user-local binaries are findable during and after install
+export PATH="$HOME/.local/bin:$PATH"
+
 # ── Package manager helpers ────────────────────────────────────────────────
-brew_install()  { brew install "$1" 2>/dev/null; }
-pip_install()   { python3 -m pip install --quiet --upgrade "$1"; }
-npm_install()   { npm install -g --quiet "$1"; }
+brew_install() { brew install "$1" 2>/dev/null; }
+
+# apt_install: system-wide install via apt-get (requires sudo).
+apt_install() { has sudo && has apt-get && sudo apt-get install -y --quiet "$1" 2>/dev/null; }
+
+# pip_install: use pipx (isolated venv per tool, bypasses PEP 668).
+# If pipx is absent and apt is available, install it first — one sudo prompt unlocks
+# all Python CLI tools cleanly without touching system Python.
+pip_install() {
+  if ! has pipx && has apt-get && has sudo; then
+    info "  installing pipx via apt..."
+    sudo apt-get install -y --quiet pipx 2>/dev/null || true
+    hash -r 2>/dev/null || true  # refresh PATH cache
+  fi
+  if has pipx; then
+    pipx install --quiet "$1"
+    return $?
+  fi
+  # Fallback: pip --user. Works on Python < 3.12; blocked on Debian 12+ by PEP 668.
+  python3 -m pip install --quiet --user --upgrade "$1"
+}
+
+# Install npm packages to ~/.local/bin — avoids needing root.
+npm_install() { npm install -g --quiet --prefix "$HOME/.local" "$1"; }
+
+# _stream_url / _download_file: prefer curl, fall back to wget.
+_stream_url()    { has curl && curl -sL "$1"          || has wget && wget -qO-  "$1"; }
+_download_file() { has curl && curl -sL "$1" -o "$2"  || has wget && wget -q    "$1" -O "$2"; }
 
 try_install() {
-  local name="$1"; local brew_pkg="${2:-}"; local pip_pkg="${3:-}"; local npm_pkg="${4:-}"
+  local name="$1" brew_pkg="${2:-}" pip_pkg="${3:-}" npm_pkg="${4:-}" custom_fn="${5:-}"
   if $IS_MAC && [ -n "$brew_pkg" ] && has brew; then
     brew_install "$brew_pkg" && return 0
   fi
@@ -34,8 +62,109 @@ try_install() {
   if [ -n "$npm_pkg" ] && has npm; then
     npm_install "$npm_pkg" && return 0
   fi
-  fail "$name: no suitable installer found (need brew, python3, or npm)"
+  if [ -n "$custom_fn" ] && { has curl || has wget; }; then
+    "$custom_fn" && return 0
+  fi
+  fail "$name: no suitable installer found"
   return 1
+}
+
+# ── GitHub release binary installers ──────────────────────────────────────
+# Used for tools that ship as static binaries (not pip/npm/brew packages on Linux).
+
+_latest_tag() {
+  local repo="$1"
+  if has gh; then
+    gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null
+  else
+    _stream_url "https://api.github.com/repos/$repo/releases/latest" \
+      | grep '"tag_name"' | head -1 \
+      | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+  fi
+}
+
+_install_gitleaks() {
+  local tag version os arch dest="$HOME/.local/bin"
+  tag=$(_latest_tag "gitleaks/gitleaks") || return 1
+  [[ -z "$tag" ]] && return 1
+  version="${tag#v}"
+  $IS_MAC && os="darwin" || os="linux"
+  case "$(uname -m)" in x86_64) arch="x64";; aarch64|arm64) arch="arm64";; *) return 1;; esac
+  mkdir -p "$dest"
+  _stream_url "https://github.com/gitleaks/gitleaks/releases/download/${tag}/gitleaks_${version}_${os}_${arch}.tar.gz" \
+    | tar -xz -C "$dest" gitleaks 2>/dev/null
+}
+
+_install_hadolint() {
+  # Prefer apt (Debian Bookworm / Ubuntu 22.04+ include hadolint in main repo).
+  apt_install hadolint && return 0
+  # Binary download fallback.
+  local tag os arch dest="$HOME/.local/bin"
+  tag=$(_latest_tag "hadolint/hadolint") || return 1
+  [[ -z "$tag" ]] && return 1
+  $IS_MAC && os="Darwin" || os="Linux"
+  case "$(uname -m)" in x86_64) arch="x86_64";; aarch64|arm64) arch="arm64";; *) return 1;; esac
+  mkdir -p "$dest"
+  _download_file "https://github.com/hadolint/hadolint/releases/download/${tag}/hadolint-${os}-${arch}" \
+    "$dest/hadolint" && chmod +x "$dest/hadolint"
+}
+
+_install_trivy() {
+  # Prefer official aquasecurity apt repo (system-wide, kept current by apt update).
+  if ! $IS_MAC && has apt-get && has sudo && { has curl || has wget; }; then
+    has gpg || apt_install gnupg
+    local keyring="/usr/share/keyrings/trivy.gpg"
+    _stream_url "https://aquasecurity.github.io/trivy-repo/deb/public.key" 2>/dev/null \
+      | sudo gpg --dearmor -o "$keyring" 2>/dev/null
+    echo "deb [signed-by=$keyring] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+      | sudo tee /etc/apt/sources.list.d/trivy.list >/dev/null
+    sudo apt-get update -qq 2>/dev/null
+    apt_install trivy && return 0
+  fi
+  # Binary download fallback (Mac or no apt).
+  local tag version os arch dest="$HOME/.local/bin"
+  tag=$(_latest_tag "aquasecurity/trivy") || return 1
+  [[ -z "$tag" ]] && return 1
+  version="${tag#v}"
+  if $IS_MAC; then
+    os="macOS"
+    case "$(uname -m)" in x86_64) arch="64bit";; aarch64|arm64) arch="ARM64";; *) return 1;; esac
+  else
+    os="Linux"
+    case "$(uname -m)" in x86_64) arch="64bit";; aarch64|arm64) arch="ARM64";; *) return 1;; esac
+  fi
+  mkdir -p "$dest"
+  _stream_url "https://github.com/aquasecurity/trivy/releases/download/${tag}/trivy_${version}_${os}-${arch}.tar.gz" \
+    | tar -xz -C "$dest" trivy 2>/dev/null
+}
+
+_install_tflint() {
+  local tag version os arch dest="$HOME/.local/bin"
+  tag=$(_latest_tag "terraform-linters/tflint") || return 1
+  [[ -z "$tag" ]] && return 1
+  version="${tag#v}"
+  $IS_MAC && os="darwin" || os="linux"
+  case "$(uname -m)" in x86_64) arch="amd64";; aarch64|arm64) arch="arm64";; *) return 1;; esac
+  local tmp; tmp=$(mktemp -d)
+  _download_file "https://github.com/terraform-linters/tflint/releases/download/${tag}/tflint_${os}_${arch}.zip" \
+    "$tmp/tflint.zip" || { rm -rf "$tmp"; return 1; }
+  mkdir -p "$dest"
+  if has unzip; then
+    unzip -q "$tmp/tflint.zip" tflint -d "$dest" 2>/dev/null || { rm -rf "$tmp"; return 1; }
+  elif has python3; then
+    python3 -c "import zipfile; zipfile.ZipFile('$tmp/tflint.zip').extract('tflint', '$dest')" \
+      2>/dev/null || { rm -rf "$tmp"; return 1; }
+  else
+    rm -rf "$tmp"; return 1
+  fi
+  rm -rf "$tmp"
+  chmod +x "$dest/tflint"
+}
+
+_install_ansible_lint() {
+  # apt package available on Ubuntu 22.04+ / Debian Bookworm.
+  apt_install ansible-lint && return 0
+  pip_install ansible-lint
 }
 
 # ── Dependency definitions ─────────────────────────────────────────────────
@@ -50,6 +179,12 @@ check_deps() {
   local with_socket="${2:-false}"
   local missing=0
 
+  # Refresh apt package lists once before any installs so we get current versions.
+  if [ "$install_missing" = "true" ] && has apt-get && has sudo; then
+    info "Updating apt package lists..."
+    sudo apt-get update -qq 2>/dev/null || true
+  fi
+
   echo ""
   echo "── Prerequisites ──────────────────────────────────────────────────"
 
@@ -63,11 +198,20 @@ check_deps() {
     fi
   done
 
+  if has curl; then
+    ok "curl"
+  elif has wget; then
+    ok "wget (curl absent — wget will be used for binary downloads)"
+  else
+    warn "curl / wget — neither found; binary tool installs will be skipped"
+    warn "  Install with: sudo apt install curl"
+  fi
+
   echo ""
   echo "── Code-level tools (/security-review) ───────────────────────────"
 
   _check_tool "semgrep"                    "Semgrep"                  "semgrep"      "semgrep"               ""                          "$install_missing"
-  _check_tool "gitleaks"                   "gitleaks"                 "gitleaks"     ""                      ""                          "$install_missing"
+  _check_tool "gitleaks"                   "gitleaks"                 "gitleaks"     ""                      ""                          "$install_missing"  "_install_gitleaks"
   _check_tool "njsscan"                    "njsscan"                  ""             "njsscan"               ""                          "$install_missing"
   _check_tool "retire"                     "retire.js"                ""             ""                      "retire"                    "$install_missing"
   _check_tool "htmlhint"                   "htmlhint"                 ""             ""                      "htmlhint"                  "$install_missing"
@@ -78,10 +222,10 @@ check_deps() {
   echo "── Infrastructure tools (/arch-review) ────────────────────────────"
 
   _check_tool "checkov"                    "Checkov"                  "checkov"      "checkov"               ""                          "$install_missing"
-  _check_tool "hadolint"                   "hadolint"                 "hadolint"     ""                      ""                          "$install_missing"
-  _check_tool "trivy"                      "Trivy"                    "trivy"        ""                      ""                          "$install_missing"
-  _check_tool "tflint"                     "tflint"                   "tflint"       ""                      ""                          "$install_missing"
-  _check_tool "ansible-lint"               "ansible-lint"             ""             "ansible-lint"          ""                          "$install_missing"
+  _check_tool "hadolint"                   "hadolint"                 "hadolint"     ""                      ""                          "$install_missing"  "_install_hadolint"
+  _check_tool "trivy"                      "Trivy"                    "trivy"        ""                      ""                          "$install_missing"  "_install_trivy"
+  _check_tool "tflint"                     "tflint"                   "tflint"       ""                      ""                          "$install_missing"  "_install_tflint"
+  _check_tool "ansible-lint"               "ansible-lint"             ""             ""                      ""                          "$install_missing"  "_install_ansible_lint"
 
   echo ""
   echo "── Optional tools ──────────────────────────────────────────────────"
@@ -107,7 +251,7 @@ check_deps() {
 }
 
 _check_tool() {
-  local cmd="$1" label="$2" brew_pkg="$3" pip_pkg="$4" npm_pkg="$5" do_install="$6"
+  local cmd="$1" label="$2" brew_pkg="$3" pip_pkg="$4" npm_pkg="$5" do_install="$6" custom_fn="${7:-}"
 
   if has "$cmd"; then
     ok "$label ($(command -v "$cmd"))"
@@ -116,7 +260,7 @@ _check_tool() {
 
   if [ "$do_install" = "true" ]; then
     info "$label — not found, installing..."
-    if try_install "$label" "$brew_pkg" "$pip_pkg" "$npm_pkg"; then
+    if try_install "$label" "$brew_pkg" "$pip_pkg" "$npm_pkg" "$custom_fn"; then
       ok "$label installed"
     else
       fail "$label — installation failed, some scans will be skipped"
@@ -142,7 +286,8 @@ configure_permissions() {
 
   mkdir -p "$settings_dir"
 
-  python3 - "$settings_file" \
+  local added_count
+  added_count=$(python3 - "$settings_file" \
     "Bash(python3:*)" "Bash(python:*)" "Bash(sed:*)" "Bash(awk:*)" "Bash(jq:*)" \
     "Bash(find:*)" "Bash(xargs:*)" "Bash(wc:*)" "Bash(sort:*)" "Bash(uniq:*)" \
     "Bash(cut:*)" "Bash(tr:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(cat:*)" \
@@ -162,7 +307,7 @@ with open(settings_file, "w") as f:
     f.write("\n")
 print(len(added))
 PYEOF
-
+  )
   local result=$?
   if [ $result -eq 0 ]; then
     ok "Inspection tool permissions configured in $settings_file"
