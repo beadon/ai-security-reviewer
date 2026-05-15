@@ -87,14 +87,18 @@ _latest_tag() {
 
 _install_gitleaks() {
   local tag version os arch dest="$HOME/.local/bin"
-  tag=$(_latest_tag "gitleaks/gitleaks") || return 1
-  [[ -z "$tag" ]] && return 1
+  tag=$(_latest_tag "gitleaks/gitleaks") || { info "    could not resolve gitleaks release tag"; return 1; }
+  [[ -z "$tag" ]] && { info "    could not resolve gitleaks release tag"; return 1; }
   version="${tag#v}"
   $IS_MAC && os="darwin" || os="linux"
-  case "$(uname -m)" in x86_64) arch="x64";; aarch64|arm64) arch="arm64";; *) return 1;; esac
+  case "$(uname -m)" in x86_64) arch="x64";; aarch64|arm64) arch="arm64";; *) info "    unsupported arch $(uname -m)"; return 1;; esac
+  local url="https://github.com/gitleaks/gitleaks/releases/download/${tag}/gitleaks_${version}_${os}_${arch}.tar.gz"
+  info "    tag=$tag  url=$url"
   mkdir -p "$dest"
-  _stream_url "https://github.com/gitleaks/gitleaks/releases/download/${tag}/gitleaks_${version}_${os}_${arch}.tar.gz" \
-    | tar -xz -C "$dest" gitleaks 2>/dev/null
+  if ! _stream_url "$url" | tar -xz -C "$dest" gitleaks; then
+    info "    download or extraction failed"
+    return 1
+  fi
 }
 
 _install_hadolint() {
