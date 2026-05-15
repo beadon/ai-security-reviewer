@@ -124,6 +124,52 @@ _check_tool() {
   fi
 }
 
+# ── Inspection tool permissions ────────────────────────────────────────────
+# Writes read-only analysis tool permissions to .claude/settings.json so that
+# sub-task agents (python3, sed, awk, jq, find, etc.) don't prompt mid-review.
+configure_permissions() {
+  local settings_file="$1"
+  local settings_dir
+  settings_dir="$(dirname "$settings_file")"
+
+  if ! has python3; then
+    warn "python3 not found — skipping settings.json permissions config"
+    warn "Add inspection tool permissions to $settings_file manually if needed"
+    return 0
+  fi
+
+  mkdir -p "$settings_dir"
+
+  python3 - "$settings_file" \
+    "Bash(python3:*)" "Bash(python:*)" "Bash(sed:*)" "Bash(awk:*)" "Bash(jq:*)" \
+    "Bash(find:*)" "Bash(xargs:*)" "Bash(wc:*)" "Bash(sort:*)" "Bash(uniq:*)" \
+    "Bash(cut:*)" "Bash(tr:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(cat:*)" \
+    "Bash(stat:*)" "Bash(file:*)" <<'PYEOF'
+import json, sys, os
+settings_file = sys.argv[1]
+new_tools = sys.argv[2:]
+s = {}
+if os.path.exists(settings_file):
+    with open(settings_file) as f:
+        s = json.load(f)
+existing = s.setdefault("permissions", {}).setdefault("allow", [])
+added = [t for t in new_tools if t not in existing]
+existing.extend(added)
+with open(settings_file, "w") as f:
+    json.dump(s, f, indent=2)
+    f.write("\n")
+print(len(added))
+PYEOF
+
+  local result=$?
+  if [ $result -eq 0 ]; then
+    ok "Inspection tool permissions configured in $settings_file"
+    info "Sub-task agents (python3, sed, awk, jq, find, etc.) will run without per-command prompts"
+  else
+    warn "Could not update $settings_file — sub-task agents may prompt for each command"
+  fi
+}
+
 # ── Skill installation ─────────────────────────────────────────────────────
 install_skills() {
   local dest="$1"
@@ -136,6 +182,14 @@ install_skills() {
   echo ""
   ok "Skills installed to $dest (version: $version)"
   info "/security-review  /arch-review  /full-review"
+
+  # Configure inspection tool permissions so sub-agents don't prompt mid-review.
+  # settings.json lives one level above the commands/ directory.
+  local settings_dir
+  settings_dir="$(dirname "$dest")"
+  echo ""
+  echo "── Inspection tool permissions ─────────────────────────────────────"
+  configure_permissions "$settings_dir/settings.json"
 }
 
 # ── CI workflow installation ───────────────────────────────────────────────
