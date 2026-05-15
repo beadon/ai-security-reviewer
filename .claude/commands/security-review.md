@@ -116,9 +116,14 @@ First check if scancode is available:
 ```
 which scancode 2>/dev/null
 ```
-If available, run it scoped to files changed in this diff to keep scan time reasonable:
+If available, run it. In diff mode, scope to changed files to keep scan time reasonable; in codebase mode (empty diff), scan the full directory:
 ```
-scancode --license --copyright --json-pp /tmp/scancode.json $(git diff --name-only origin/HEAD... | tr '\n' ' ') 2>/dev/null
+DIFF_FILES=$(git diff --name-only origin/HEAD... 2>/dev/null | tr '\n' ' ')
+if [ -n "$DIFF_FILES" ]; then
+  scancode --license --copyright --json-pp /tmp/scancode.json $DIFF_FILES 2>/dev/null
+else
+  scancode --license --copyright --json-pp /tmp/scancode.json . 2>/dev/null
+fi
 ```
 If scancode is not installed, record `[NOT RUN — scancode not installed]` and continue.
 

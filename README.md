@@ -50,6 +50,7 @@ Or install them manually. On macOS with Homebrew:
 # Code-level tools (/security-review)
 brew install semgrep gitleaks
 pip install njsscan scancode-toolkit
+npm install -g retire
 
 # Infrastructure tools (/arch-review)
 brew install checkov hadolint trivy tflint
