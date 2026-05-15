@@ -31,17 +31,25 @@ The security scanning tools (Semgrep, gitleaks, njsscan) are **optional for loca
 
 ## Installation
 
-Copy the skill files into the `.claude/commands/` directory of any project you want to analyze, or into your global Claude Code commands directory to make them available across all projects:
-
 ```bash
-# Project-level (one repo)
-cp security-review.md arch-review.md full-review.md /path/to/your/project/.claude/commands/
-
-# Global (all projects)
-cp security-review.md arch-review.md full-review.md ~/.claude/commands/
+git clone https://github.com/beadon/ai-security-reviewer
+cd ai-security-reviewer
 ```
 
-The orchestrator (`full-review.md`) reads the other two skill files at runtime. Both must be installed in the same location for `/full-review` to work.
+Then run the installer for your scenario:
+
+```bash
+# Make available across all projects
+./install.sh --global
+
+# Install to one specific project (skills only)
+./install.sh --project /path/to/your/project
+
+# Install skills + CI workflow to a project (Scenario 3)
+./install.sh --all /path/to/your/project
+```
+
+The installer copies the skill files from `.claude/commands/` to the correct location and the CI workflow from `.github/workflows/` to the target repo. The orchestrator (`/full-review`) reads the other two skill files at runtime — all three must be installed in the same directory.
 
 ---
 
@@ -134,7 +142,18 @@ PR opened
 
 ## CI Workflow
 
-Add this file to your target repository at `.github/workflows/security-scan.yml`:
+The workflow file is at [`.github/workflows/security-scan.yml`](.github/workflows/security-scan.yml) in this repo. Install it to your target repository with:
+
+```bash
+./install.sh --ci /path/to/your/project
+# or as part of a full install:
+./install.sh --all /path/to/your/project
+```
+
+It runs on every pull request, executes all scanning tools in a clean environment, and posts results as a PR comment that `/full-review` can consume.
+
+<details>
+<summary>View workflow YAML</summary>
 
 ```yaml
 name: Security Scan
@@ -286,6 +305,8 @@ jobs:
               });
             }
 ```
+
+</details>
 
 ---
 

@@ -24,15 +24,21 @@ Contributions are welcome. This project is a set of Claude Code skill files — 
 ## Project Structure
 
 ```
-security-review.md   # Code-level skill: npm/JS, supply chain, license scanning
-arch-review.md       # Infrastructure skill: IaC, containers, CI/CD, cloud config
-full-review.md       # Orchestrator: spawns both above in parallel, merges reports
-README.md            # Documentation: setup, usage, tool descriptions, lifecycle
-CONTRIBUTING.md      # This file
-LICENSE              # MIT
+.claude/
+  commands/
+    security-review.md   # /security-review — code-level: npm/JS, supply chain, licenses
+    arch-review.md       # /arch-review     — infrastructure: IaC, containers, CI/CD
+    full-review.md       # /full-review     — orchestrator: runs both in parallel
+.github/
+  workflows/
+    security-scan.yml    # CI workflow — runs all tools on PRs, posts results as comment
+install.sh               # Installer for all 3 deployment scenarios
+README.md
+CONTRIBUTING.md
+LICENSE
 ```
 
-The orchestrator (`full-review.md`) reads the other two skill files at runtime — keep all three in the same directory.
+The orchestrator (`full-review.md`) reads the other two skill files at runtime from `.claude/commands/` — keep all three in the same directory. The repo structure mirrors the installation target exactly, so `install.sh` is a straight copy.
 
 ---
 
