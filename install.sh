@@ -73,14 +73,16 @@ try_install() {
 # Used for tools that ship as static binaries (not pip/npm/brew packages on Linux).
 
 _latest_tag() {
-  local repo="$1"
+  local repo="$1" tag
+  # Try gh first (authenticated, higher rate limit) but fall back to curl/wget
+  # if gh is missing, misconfigured, or returns bad credentials.
   if has gh; then
-    gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null
-  else
-    _stream_url "https://api.github.com/repos/$repo/releases/latest" \
-      | grep '"tag_name"' | head -1 \
-      | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
+    tag=$(gh api "repos/$repo/releases/latest" --jq '.tag_name' 2>/dev/null) \
+      && [[ -n "$tag" ]] && echo "$tag" && return 0
   fi
+  _stream_url "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+    | grep '"tag_name"' | head -1 \
+    | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/'
 }
 
 _install_gitleaks() {
@@ -205,6 +207,11 @@ check_deps() {
   else
     warn "curl / wget — neither found; binary tool installs will be skipped"
     warn "  Install with: sudo apt install curl"
+  fi
+
+  if has gh && ! gh auth status &>/dev/null; then
+    warn "gh auth: credentials invalid — run 'gh auth login' to fix"
+    warn "  Binary tool installs will fall back to unauthenticated API calls (60 req/hr limit)"
   fi
 
   echo ""
