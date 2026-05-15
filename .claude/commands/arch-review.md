@@ -226,15 +226,17 @@ If no findings survive filtering: output `No high-confidence infrastructure secu
 |----------|----------|
 | **High** | Directly exploitable: privilege escalation, secrets exposure, public data breach, container escape |
 | **Medium** | Requires specific conditions but significant impact when met |
-| **Low** | Defense-in-depth — only include if confidence is 9 or 10 |
+| **Low** | Defense-in-depth gap — real exposure but no direct exploit path |
 
 | Confidence | Meaning |
 |------------|---------|
 | 9–10 | Certain exploit path; attack is concrete and impact is clear |
-| 8–9  | Clear misconfiguration with a known exploitation method |
-| < 8  | Do NOT report |
+| 7–8  | Clear misconfiguration with a known exploitation method |
+| 4–6  | Probable misconfiguration; requires specific conditions to trigger |
+| 2–3  | Weak signal — worth noting but unconfirmed |
+| < 2  | Do NOT report |
 
-**Minimum threshold to report: 8/10**
+**Minimum threshold to report: 2/10**
 
 ---
 
@@ -278,4 +280,4 @@ Prompt must include: the complete raw output from all Phase 0 tool scans, the de
 Instruction: for each tool finding return: tool name, rule ID, file, line, classification (TRUE_POSITIVE or FALSE_POSITIVE), one-sentence rationale, and for true positives the specific blast radius in this deployment.
 
 **Step 3 — Final Report**
-Discard any semantic finding with confidence < 8. Discard any tool finding classified FALSE_POSITIVE. Format surviving findings using the Output Format above. Output the report and nothing else.
+Discard any semantic finding with confidence < 2. Discard any tool finding classified FALSE_POSITIVE. Format surviving findings using the Output Format above. Output the report and nothing else.
