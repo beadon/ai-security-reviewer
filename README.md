@@ -36,6 +36,30 @@ git clone https://github.com/beadon/ai-security-reviewer
 cd ai-security-reviewer
 ```
 
+### Scanning tools
+
+The installer can install all scanning tools for you:
+
+```bash
+./install.sh --global --with-deps
+```
+
+Or install them manually. On macOS with Homebrew:
+
+```bash
+# Code-level tools (/security-review)
+brew install semgrep gitleaks
+pip install njsscan scancode-toolkit
+
+# Infrastructure tools (/arch-review)
+brew install checkov hadolint trivy tflint
+pip install ansible-lint
+
+# License checker (no install needed — runs via npx)
+```
+
+`pip install njsscan` installs the njsscan binary into your Python environment's `bin/` directory — make sure that directory is on your `PATH` (e.g. `$(python3 -m site --user-base)/bin` for user installs, or your virtualenv's `bin/`).
+
 Then run the installer for your scenario:
 
 ```bash
