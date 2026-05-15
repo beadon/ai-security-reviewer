@@ -112,20 +112,19 @@ Covers: copyleft licenses (GPL, AGPL, LGPL) and unknown licenses in the dependen
 
 ### Copyright and License Notice Scanner *(optional — scancode-toolkit)*
 
-First check if scancode is available:
+Run the following block as a single command. The `if` handles the installed/not-installed check internally — do not split this into a separate availability check first:
 ```
-which scancode 2>/dev/null
-```
-If available, run it. In diff mode, scope to changed files to keep scan time reasonable; in codebase mode (empty diff), scan the full directory:
-```
-DIFF_FILES=$(git diff --name-only origin/HEAD... 2>/dev/null | tr '\n' ' ')
-if [ -n "$DIFF_FILES" ]; then
-  scancode --license --copyright --json-pp /tmp/scancode.json $DIFF_FILES 2>/dev/null
+if which scancode &>/dev/null; then
+  DIFF_FILES=$(git diff --name-only origin/HEAD... 2>/dev/null | tr '\n' ' ')
+  if [ -n "$DIFF_FILES" ]; then
+    scancode --license --copyright --json-pp /tmp/scancode.json $DIFF_FILES 2>/dev/null && echo "[scancode done]" || echo "[scancode failed]"
+  else
+    scancode --license --copyright --json-pp /tmp/scancode.json . 2>/dev/null && echo "[scancode done]" || echo "[scancode failed]"
+  fi
 else
-  scancode --license --copyright --json-pp /tmp/scancode.json . 2>/dev/null
+  echo "[NOT RUN — scancode not installed]"
 fi
 ```
-If scancode is not installed, record `[NOT RUN — scancode not installed]` and continue.
 
 Covers: copyright notices embedded in source file headers, license identifiers in individual files, and detection of code snippets that originate from open source projects — catching GPL/AGPL-contaminated code copied directly into the codebase rather than imported as a dependency. This is what license-checker cannot do: license-checker reads `package.json` metadata; scancode reads the actual source files (OWASP A06, legal/IP risk).
 
@@ -249,7 +248,27 @@ Review the captured output from Phase 0. For each tool finding:
 
 ## Output Format
 
-Produce a single markdown report with two sections. Omit a section entirely if it has no qualifying findings.
+Produce a single markdown report. Start with a **Tools Run** table, then the two finding sections. Omit a finding section entirely if it has no qualifying findings.
+
+### Tools Run
+
+A one-row-per-tool table that acts as a checkpoint — so the reader can verify no scan was silently skipped.
+
+```
+| Tool | Status | Findings |
+|------|--------|----------|
+| npm audit | ✓ ran | 2 vulnerabilities (2 low) |
+| Semgrep | ✓ ran | 0 findings |
+| gitleaks | ✗ not installed | — |
+| njsscan | ✓ ran | 0 findings |
+| retire.js | ✓ ran | 0 findings |
+| htmlhint | ✓ ran | 0 findings |
+| license-checker | ✓ ran | 1 package (MIT) |
+| scancode | ✓ ran | 0 license issues |
+| socket.dev | ✗ no API key | — |
+```
+
+Status values: `✓ ran` / `✗ not installed` / `✗ no API key` / `✗ failed` / `✗ skipped (no JS/HTML files)`
 
 ### Section A — Semantic Findings (AI-Detected)
 
