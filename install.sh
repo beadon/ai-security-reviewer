@@ -31,9 +31,13 @@ EOF
 
 install_skills() {
   local dest="$1"
+  local version
+  version="$(git -C "$SCRIPT_DIR" describe --tags --abbrev=0 2>/dev/null || echo "development")"
   mkdir -p "$dest"
-  cp "$COMMANDS_SRC"/*.md "$dest/"
-  echo "Skills installed to $dest"
+  for f in "$COMMANDS_SRC"/*.md; do
+    sed "s/{{VERSION}}/$version/g" "$f" > "$dest/$(basename "$f")"
+  done
+  echo "Skills installed to $dest (version: $version)"
   echo "  /security-review  /arch-review  /full-review"
 }
 

@@ -1,7 +1,10 @@
 ---
 allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(checkov:*), Bash(hadolint:*), Bash(trivy:*), Bash(tflint:*), Bash(ansible-lint:*), Bash(which:*), Read, Glob, Grep, LS, Task
 description: Infrastructure and deployment security review — IaC, containers, CI/CD, and cloud configuration
+version: "{{VERSION}}"
 ---
+
+> Skill version: !`git describe --tags --abbrev=0 2>/dev/null || echo "development"`
 
 ## Role
 

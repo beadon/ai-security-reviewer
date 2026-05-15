@@ -1,7 +1,10 @@
 ---
 allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Read, Glob, LS, Task
 description: Full security review — orchestrates parallel code-level and infrastructure security analysis, merges into a unified report
+version: "{{VERSION}}"
 ---
+
+> Skill version: !`git describe --tags --abbrev=0 2>/dev/null || echo "development"`
 
 ## Role
 

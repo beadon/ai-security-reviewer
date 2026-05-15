@@ -1,7 +1,10 @@
 ---
 allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(npm audit:*), Bash(semgrep:*), Bash(gitleaks:*), Bash(njsscan:*), Bash(socket:*), Bash(npx license-checker-rseidelsohn:*), Bash(npx @onebeyond/license-checker:*), Bash(scancode:*), Bash(printenv:*), Bash(which:*), Read, Glob, Grep, LS, Task
 description: Security review for npm/JS — automated tool scans followed by AI semantic analysis of what tools cannot catch
+version: "{{VERSION}}"
 ---
+
+> Skill version: !`git describe --tags --abbrev=0 2>/dev/null || echo "development"`
 
 ## Role
 
