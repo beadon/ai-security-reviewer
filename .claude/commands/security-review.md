@@ -299,6 +299,19 @@ Confirmed true positives from Phase 3. Do not only copy tool output verbatim —
 * Recommendation: [Specific fix]
 ```
 
+### Prioritized Remediation Table
+
+Every report must close with this table, ordered by priority (highest first):
+
+*Effort key: XS < 1 hr · S 1–4 hrs · M 0.5–2 days · L 3–5 days · XL 1+ weeks*
+
+| Priority | Finding | Severity | Est. Effort | Notes |
+|----------|---------|----------|-------------|-------|
+| 1 | ... | High | XS (< 30 min) | |
+| 2 | ... | High | L (4 days) | Requires A1 first |
+
+`Est. Effort` is a T-shirt size plus a parenthetical clock estimate calibrated to a single developer familiar with the codebase. Anchor to the specific fix in the Recommendation — not the vulnerability class in general. If a fix depends on a prerequisite, note it in the Notes column.
+
 If no findings survive filtering in either section: output `No high-confidence security vulnerabilities found in this changeset.`
 
 ---
@@ -364,7 +377,7 @@ Run all Phase 0 tool scans using your bash tool — including the optional licen
 If `git diff --merge-base origin/HEAD` returned no output (clean working tree, or reviewing the default branch directly with no unreviewed changes):
 
 - **Do not apply the scope gate below.**
-- In Phase 2, instead of analyzing a diff, identify the **top 10 most security-relevant files** in the codebase using these heuristics (in priority order):
+- In Phase 2, instead of analyzing a diff, identify the **top 20 most security-relevant files** in the codebase using these heuristics (in priority order):
   1. Files containing auth, login, session, token, password, or permission logic
   2. Files with DB writes — Supabase, Firebase, ORM, or raw SQL calls that mutate data
   3. Files handling user input: form submissions, fetch/XHR handlers, file uploads
