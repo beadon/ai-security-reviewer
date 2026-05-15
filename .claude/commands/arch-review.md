@@ -50,25 +50,25 @@ Run each command below using your bash tool. If a tool is not installed, record 
 
 ### Checkov (primary IaC scanner)
 ```
-checkov -d . --output json --quiet 2>/dev/null
+checkov -d . --output json --quiet 2>/dev/null; true
 ```
 Covers: Terraform, CloudFormation, Kubernetes, Dockerfile, Ansible, Helm, Bicep, GitHub Actions — known misconfiguration rules across all major IaC formats (OWASP A01, A02, A05).
 
 ### hadolint (Docker-specific)
 ```
-hadolint --format json $(find . -name 'Dockerfile*' -not -path '*/node_modules/*' -not -path '*/.git/*') 2>/dev/null
+hadolint --format json $(find . -name 'Dockerfile*' -not -path '*/node_modules/*' -not -path '*/.git/*') 2>/dev/null; true
 ```
 Covers: Dockerfile best practices, insecure `ADD` URL fetches, missing `USER` directives, mutable base image tags, dangerous `RUN` patterns (OWASP A05, A08).
 
 ### Trivy config scan
 ```
-trivy config --format json . 2>/dev/null
+trivy config --format json . 2>/dev/null; true
 ```
 Covers: Kubernetes, Terraform, CloudFormation, Dockerfile — complementary rule set to Checkov with different coverage areas (OWASP A01, A05, A06).
 
 ### tflint (Terraform-specific)
 ```
-tflint --format json 2>/dev/null
+tflint --format json 2>/dev/null; true
 ```
 Covers: Terraform provider-specific rules, deprecated resources, misconfigured arguments that Checkov's generic rules miss (OWASP A05).
 
@@ -79,7 +79,7 @@ which ansible-lint 2>/dev/null && find . -name '*.yml' -path '*/playbooks/*' -o 
 ```
 If files are found and ansible-lint is available:
 ```
-ansible-lint --format json 2>/dev/null
+ansible-lint --format json 2>/dev/null; true
 ```
 Covers: Ansible playbook security — command injection in shell tasks, privilege escalation misuse, insecure module usage (OWASP A03, A05).
 

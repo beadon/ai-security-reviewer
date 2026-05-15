@@ -50,7 +50,7 @@ Run each command below using your bash tool. Capture all output verbatim. If a t
 
 ### npm audit
 ```
-npm audit --json 2>/dev/null
+npm audit --json 2>/dev/null; true
 ```
 Covers: known CVEs in the dependency tree (OWASP A06).
 
