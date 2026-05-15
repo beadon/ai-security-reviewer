@@ -5,30 +5,126 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_SRC="$SCRIPT_DIR/.claude/commands"
 WORKFLOW_SRC="$SCRIPT_DIR/.github/workflows/security-scan.yml"
 
-usage() {
-  cat <<EOF
-AI Security Reviewer — installer
+# ── Colours ────────────────────────────────────────────────────────────────
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; RESET='\033[0m'
+ok()   { echo -e "${GREEN}  ✓${RESET} $*"; }
+warn() { echo -e "${YELLOW}  !${RESET} $*"; }
+fail() { echo -e "${RED}  ✗${RESET} $*"; }
+info() { echo -e "  $*"; }
 
-Usage:
-  install.sh --global                     Install skills to ~/.claude/commands/ (all projects)
-  install.sh --project <path>             Install skills to <path>/.claude/commands/
-  install.sh --ci <path>                  Copy CI workflow to <path>/.github/workflows/
-  install.sh --all <path>                 Install skills + CI workflow to <path>
+# ── Platform detection ─────────────────────────────────────────────────────
+IS_MAC=false
+[[ "$OSTYPE" == darwin* ]] && IS_MAC=true
 
-Examples:
-  ./install.sh --global
-  ./install.sh --project ~/work/my-app
-  ./install.sh --all ~/work/my-app
-  ./install.sh --ci ~/work/my-app
+has() { command -v "$1" &>/dev/null; }
 
-After installing, invoke skills in Claude Code with:
-  /security-review    — npm/JS code-level review
-  /arch-review        — infrastructure and IaC review
-  /full-review        — both in parallel, unified report
-EOF
-  exit 1
+# ── Package manager helpers ────────────────────────────────────────────────
+brew_install()  { brew install "$1" 2>/dev/null; }
+pip_install()   { python3 -m pip install --quiet --upgrade "$1"; }
+npm_install()   { npm install -g --quiet "$1"; }
+
+try_install() {
+  local name="$1"; local brew_pkg="${2:-}"; local pip_pkg="${3:-}"; local npm_pkg="${4:-}"
+  if $IS_MAC && [ -n "$brew_pkg" ] && has brew; then
+    brew_install "$brew_pkg" && return 0
+  fi
+  if [ -n "$pip_pkg" ] && has python3; then
+    pip_install "$pip_pkg" && return 0
+  fi
+  if [ -n "$npm_pkg" ] && has npm; then
+    npm_install "$npm_pkg" && return 0
+  fi
+  fail "$name: no suitable installer found (need brew, python3, or npm)"
+  return 1
 }
 
+# ── Dependency definitions ─────────────────────────────────────────────────
+#
+# Each entry: check_cmd | display_name | brew_pkg | pip_pkg | npm_pkg | optional
+#
+# Required tools are installed automatically.
+# Optional tools (socket.dev) are flagged but not installed without --with-socket.
+
+check_deps() {
+  local install_missing="${1:-false}"
+  local with_socket="${2:-false}"
+  local missing=0
+
+  echo ""
+  echo "── Prerequisites ──────────────────────────────────────────────────"
+
+  for tool in "gh:GitHub CLI:gh:::" "npm:npm (Node.js)::::" "python3:Python 3::::"; do
+    local cmd="${tool%%:*}"; local label="${tool#*:}"; label="${label%%:*}"
+    if has "$cmd"; then
+      ok "$label"
+    else
+      fail "$label — required, install from https://nodejs.org / https://cli.github.com / https://python.org"
+      (( missing++ )) || true
+    fi
+  done
+
+  echo ""
+  echo "── Code-level tools (/security-review) ───────────────────────────"
+
+  _check_tool "semgrep"                    "Semgrep"                  "semgrep"      "semgrep"               ""                          "$install_missing"
+  _check_tool "gitleaks"                   "gitleaks"                 "gitleaks"     ""                      ""                          "$install_missing"
+  _check_tool "njsscan"                    "njsscan"                  ""             "njsscan"               ""                          "$install_missing"
+  _check_tool "license-checker-rseidelsohn" "license-checker"         ""             ""                      "license-checker-rseidelsohn" "$install_missing"
+  _check_tool "scancode"                   "scancode-toolkit"         ""             "scancode-toolkit"      ""                          "$install_missing"
+
+  echo ""
+  echo "── Infrastructure tools (/arch-review) ────────────────────────────"
+
+  _check_tool "checkov"                    "Checkov"                  "checkov"      "checkov"               ""                          "$install_missing"
+  _check_tool "hadolint"                   "hadolint"                 "hadolint"     ""                      ""                          "$install_missing"
+  _check_tool "trivy"                      "Trivy"                    "trivy"        ""                      ""                          "$install_missing"
+  _check_tool "tflint"                     "tflint"                   "tflint"       ""                      ""                          "$install_missing"
+  _check_tool "ansible-lint"               "ansible-lint"             ""             "ansible-lint"          ""                          "$install_missing"
+
+  echo ""
+  echo "── Optional tools ──────────────────────────────────────────────────"
+
+  if $with_socket; then
+    _check_tool "socket"                   "socket.dev CLI"           ""             ""                      "@socketsecurity/cli"       "$install_missing"
+    if [ -z "${SOCKET_API_KEY:-}" ]; then
+      warn "socket.dev: SOCKET_API_KEY not set — add to your environment or repo secrets"
+    fi
+  else
+    if has socket; then
+      ok "socket.dev CLI (installed)"
+    else
+      info "socket.dev CLI — not installed (rerun with --with-socket to install)"
+    fi
+  fi
+
+  echo ""
+  if [ "$missing" -gt 0 ]; then
+    fail "$missing prerequisite(s) missing — install them before proceeding"
+    return 1
+  fi
+}
+
+_check_tool() {
+  local cmd="$1" label="$2" brew_pkg="$3" pip_pkg="$4" npm_pkg="$5" do_install="$6"
+
+  if has "$cmd"; then
+    ok "$label ($(command -v "$cmd"))"
+    return 0
+  fi
+
+  if [ "$do_install" = "true" ]; then
+    info "$label — not found, installing..."
+    if try_install "$label" "$brew_pkg" "$pip_pkg" "$npm_pkg"; then
+      ok "$label installed"
+    else
+      fail "$label — installation failed, some scans will be skipped"
+    fi
+  else
+    warn "$label — not installed (skills will skip this scan)"
+  fi
+}
+
+# ── Skill installation ─────────────────────────────────────────────────────
 install_skills() {
   local dest="$1"
   local version
@@ -37,41 +133,105 @@ install_skills() {
   for f in "$COMMANDS_SRC"/*.md; do
     sed "s/{{VERSION}}/$version/g" "$f" > "$dest/$(basename "$f")"
   done
-  echo "Skills installed to $dest (version: $version)"
-  echo "  /security-review  /arch-review  /full-review"
+  echo ""
+  ok "Skills installed to $dest (version: $version)"
+  info "/security-review  /arch-review  /full-review"
 }
 
+# ── CI workflow installation ───────────────────────────────────────────────
 install_ci() {
   local project="$1"
   local dest="$project/.github/workflows"
   mkdir -p "$dest"
   cp "$WORKFLOW_SRC" "$dest/security-scan.yml"
-  echo "CI workflow installed to $dest/security-scan.yml"
-  echo "  Commit it to your repo and it will run on every pull request."
-  echo "  Optional: add SOCKET_API_KEY to your repo secrets for socket.dev scanning."
+  echo ""
+  ok "CI workflow installed to $dest/security-scan.yml"
+  info "Commit it to your repo — it runs on every pull request."
+  info "Optional: add SOCKET_API_KEY to your repo secrets for socket.dev scanning."
 }
 
+# ── Usage ──────────────────────────────────────────────────────────────────
+usage() {
+  cat <<EOF
+
+AI Security Reviewer — installer
+
+Usage:
+  install.sh --global   [--with-deps] [--with-socket]
+  install.sh --project  <path> [--with-deps] [--with-socket]
+  install.sh --ci       <path>
+  install.sh --all      <path> [--with-deps] [--with-socket]
+  install.sh --check-deps [--with-socket]
+
+Options:
+  --global              Install skills to ~/.claude/commands/ (available in all projects)
+  --project <path>      Install skills to <path>/.claude/commands/
+  --ci <path>           Copy CI workflow to <path>/.github/workflows/
+  --all <path>          Install skills + CI workflow to <path>
+  --check-deps          Check which scanning tools are installed without installing
+  --with-deps           Install missing scanning tools automatically
+  --with-socket         Include socket.dev CLI in dependency check/install
+
+Examples:
+  ./install.sh --global --with-deps
+  ./install.sh --all ~/work/my-app --with-deps --with-socket
+  ./install.sh --check-deps
+  ./install.sh --ci ~/work/my-app
+
+After installing, invoke skills in Claude Code:
+  /security-review    — npm/JS code-level review
+  /arch-review        — infrastructure and IaC review
+  /full-review        — both in parallel, unified report
+
+EOF
+  exit 1
+}
+
+# ── Argument parsing ───────────────────────────────────────────────────────
 [[ $# -eq 0 ]] && usage
 
-case "$1" in
-  --global)
+MODE=""
+TARGET=""
+WITH_DEPS=false
+WITH_SOCKET=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --global)      MODE="global" ;;
+    --project)     MODE="project"; TARGET="${2:-}"; shift ;;
+    --ci)          MODE="ci";      TARGET="${2:-}"; shift ;;
+    --all)         MODE="all";     TARGET="${2:-}"; shift ;;
+    --check-deps)  MODE="check" ;;
+    --with-deps)   WITH_DEPS=true ;;
+    --with-socket) WITH_SOCKET=true ;;
+    -h|--help)     usage ;;
+    *) echo "Error: unknown option '$1'"; usage ;;
+  esac
+  shift
+done
+
+[ -z "$MODE" ] && usage
+[[ "$MODE" =~ ^(project|ci|all)$ ]] && [ -z "$TARGET" ] && { echo "Error: $MODE requires a path"; usage; }
+
+# ── Main ───────────────────────────────────────────────────────────────────
+case "$MODE" in
+  check)
+    check_deps false "$WITH_SOCKET"
+    ;;
+  global)
+    check_deps "$WITH_DEPS" "$WITH_SOCKET"
     install_skills "$HOME/.claude/commands"
     ;;
-  --project)
-    [[ -z "${2:-}" ]] && { echo "Error: --project requires a path"; usage; }
-    install_skills "$2/.claude/commands"
+  project)
+    check_deps "$WITH_DEPS" "$WITH_SOCKET"
+    install_skills "$TARGET/.claude/commands"
     ;;
-  --ci)
-    [[ -z "${2:-}" ]] && { echo "Error: --ci requires a path"; usage; }
-    install_ci "$2"
+  ci)
+    install_ci "$TARGET"
     ;;
-  --all)
-    [[ -z "${2:-}" ]] && { echo "Error: --all requires a path"; usage; }
-    install_skills "$2/.claude/commands"
-    install_ci "$2"
-    ;;
-  *)
-    echo "Error: unknown option '$1'"
-    usage
+  all)
+    check_deps "$WITH_DEPS" "$WITH_SOCKET"
+    install_skills "$TARGET/.claude/commands"
+    install_ci "$TARGET"
     ;;
 esac
