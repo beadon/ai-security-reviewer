@@ -4,7 +4,7 @@ description: Full security review — orchestrates parallel code-level and infra
 version: "{{VERSION}}"
 ---
 
-> !`gh api repos/beadon/ai-security-reviewer/releases/latest --jq 'if .tag_name != "{{VERSION}}" and "{{VERSION}}" != "development" then "⚠️  Update available: " + .tag_name + " (installed: {{VERSION}})" else empty end' 2>/dev/null`
+> !`gh api repos/beadon/ai-security-reviewer/releases/latest --jq 'if .tag_name != "{{VERSION}}" and "{{VERSION}}" != "development" then "⚠️  Update available: " + .tag_name + " (installed: {{VERSION}})" else empty end' 2>/dev/null || true`
 
 ## Role
 
