@@ -1,10 +1,10 @@
 ---
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(npm audit:*), Bash(semgrep:*), Bash(gitleaks:*), Bash(njsscan:*), Bash(socket:*), Bash(npx license-checker-rseidelsohn:*), Bash(npx @onebeyond/license-checker:*), Bash(scancode:*), Bash(printenv:*), Bash(which:*), Read, Glob, Grep, LS, Task
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(gh api:*), Bash(npm audit:*), Bash(semgrep:*), Bash(gitleaks:*), Bash(njsscan:*), Bash(socket:*), Bash(npx license-checker-rseidelsohn:*), Bash(npx @onebeyond/license-checker:*), Bash(scancode:*), Bash(printenv:*), Bash(which:*), Read, Glob, Grep, LS, Task
 description: Security review for npm/JS — automated tool scans followed by AI semantic analysis of what tools cannot catch
 version: "{{VERSION}}"
 ---
 
-> Skill version: !`git describe --tags --abbrev=0 2>/dev/null || echo "development"`
+> !`_cv="{{VERSION}}"; _lv=$(gh api repos/beadon/ai-security-reviewer/releases/latest --jq .tag_name 2>/dev/null || echo ""); [[ "$_cv" == v* ]] && [ -n "$_lv" ] && [ "$_cv" != "$_lv" ] && echo "⚠️  Update available: $_lv (installed: $_cv) — https://github.com/beadon/ai-security-reviewer/releases" || true`
 
 ## Role
 

@@ -1,10 +1,10 @@
 ---
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Read, Glob, LS, Task
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(gh api:*), Read, Glob, LS, Task
 description: Full security review — orchestrates parallel code-level and infrastructure security analysis, merges into a unified report
 version: "{{VERSION}}"
 ---
 
-> Skill version: !`git describe --tags --abbrev=0 2>/dev/null || echo "development"`
+> !`_cv="{{VERSION}}"; _lv=$(gh api repos/beadon/ai-security-reviewer/releases/latest --jq .tag_name 2>/dev/null || echo ""); [[ "$_cv" == v* ]] && [ -n "$_lv" ] && [ "$_cv" != "$_lv" ] && echo "⚠️  Update available: $_lv (installed: $_cv) — https://github.com/beadon/ai-security-reviewer/releases" || true`
 
 ## Role
 
