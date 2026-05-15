@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(gh api:*), Bash(npm audit:*), Bash(semgrep:*), Bash(gitleaks:*), Bash(njsscan:*), Bash(retire:*), Bash(socket:*), Bash(npx license-checker-rseidelsohn:*), Bash(npx @onebeyond/license-checker:*), Bash(npx htmlhint:*), Bash(scancode:*), Bash(printenv:*), Bash(which:*), Read, Glob, Grep, LS, Task, Write
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(gh api:*), Bash(npm audit:*), Bash(semgrep:*), Bash(gitleaks:*), Bash(njsscan:*), Bash(retire:*), Bash(socket:*), Bash(npx license-checker-rseidelsohn:*), Bash(npx @onebeyond/license-checker:*), Bash(npx htmlhint:*), Bash(npx skills:*), Bash(scancode:*), Bash(printenv:*), Bash(which:*), Read, Glob, Grep, LS, Task, Write
 description: Security review for npm/JS — automated tool scans followed by AI semantic analysis of what tools cannot catch
 version: "{{VERSION}}"
 ---
@@ -138,6 +138,29 @@ If `SOCKET_API_KEY` is not set, record `[NOT RUN — SOCKET_API_KEY not configur
 
 Covers: supply chain attacks — malicious install scripts, typosquatted packages, dependency confusion, packages with new or unknown maintainers, protestware, packages exfiltrating data at install time (OWASP A06, supply chain).
 
+### Supabase Security Scan *(conditional — only when Supabase is detected)*
+
+First, detect Supabase using the Grep tool — search for `@supabase/supabase-js` in `package.json`, or `createClient` / `SUPABASE_URL` / `SUPABASE_ANON_KEY` anywhere in the project. If no match is found, skip this section entirely.
+
+If Supabase is detected, attempt to install the official Supabase agent skills for additional Postgres guidance (fails gracefully if unavailable):
+```
+npx skills add supabase/agent-skills 2>/dev/null; true
+```
+
+Then run these targeted checks:
+
+**Service role key exposure** (critical — this key bypasses RLS entirely):
+Search with the Grep tool for `service_role` or `SERVICE_ROLE_KEY` in any non-`.env` file, especially `.js`, `.ts`, `.html`, or any file that could be loaded in a browser.
+
+**Table access inventory** — list every Supabase table the code reads or writes:
+Search with the Grep tool for `.from('` or `.from("` across the codebase. Record each unique table name — these are the tables that must have RLS policies.
+
+**RLS policy coverage** — for each table identified above, search the Grep tool for the table name alongside `ENABLE ROW LEVEL SECURITY`, `CREATE POLICY`, or `FORCE ROW LEVEL SECURITY` in any `.sql`, migration, or schema file. Flag tables with no policy evidence.
+
+**SECURITY DEFINER functions** — search with the Grep tool for `SECURITY DEFINER` in SQL or migration files. For each match, note the function name — these bypass the caller's RLS context.
+
+Covers: Supabase-specific auth bypass patterns, tenant isolation failures, accidental RLS bypass, and service key exposure (OWASP A01, A02, A04).
+
 ---
 
 ## Phase 1 — Codebase Context
@@ -150,6 +173,7 @@ Use file-reading and search tools to understand the project before analyzing the
 - **Data flow:** How does user input travel from HTTP handlers to persistence (DB queries, file writes, cache) and back out?
 - **Validation layer:** What sanitization and validation libraries are in use (express-validator, joi, zod, yup)? Where are they applied?
 - **HTML surface area:** If the project contains `.html` files with embedded `<script>` blocks or inline event handlers, treat all inline JavaScript as first-class JS surface area subject to the same analysis as `.js` files. Note whether the app is a serverless SPA (no backend — Supabase, Firebase, or similar direct DB access) vs. a server-backed app, as this changes the scope of client-side auth analysis.
+- **Supabase model:** If Supabase is detected, establish: which tables exist and which have confirmed RLS policies; whether the app uses the anon key or the service role key; whether RPC functions are called and whether any may be `SECURITY DEFINER`; whether the app is truly serverless (RLS is the only enforcement layer) or has a backend that can double-check access.
 
 ---
 
@@ -195,6 +219,16 @@ Work through each category below against the diff. These require understanding i
 - Is there a code path that accepts or partially trusts a token without the full validation chain?
 - Can a token issued for one resource or audience be replayed in a different context?
 
+### 2.9 · Supabase / Direct Database Security *(skip if Supabase not detected)*
+
+- **Service role key in client code:** Is `SUPABASE_SERVICE_ROLE_KEY` or any `service_role` key referenced in code that runs in the browser, is bundled into a static asset, or is committed to the repository? The service role key bypasses RLS entirely — any client-side exposure is a complete auth bypass regardless of policy configuration.
+- **RLS coverage:** For every table accessed via `.from('tablename')`, is there evidence of RLS policies in migration or schema files? A table without RLS that holds user data allows any authenticated (or even anonymous) user to read or write all rows.
+- **`auth.uid()` vs. application-supplied IDs in policies:** Do RLS policies use `auth.uid()` (database-enforced, unforgeable) or a value passed in from application code (e.g., `current_setting('app.current_user_id')` set by the client)? Application-set context variables are spoofable if the client can call `SET` directly.
+- **`FORCE ROW LEVEL SECURITY` absent:** Without `FORCE ROW LEVEL SECURITY`, the table owner role bypasses all policies. Check whether migration files pair `ENABLE ROW LEVEL SECURITY` with `FORCE ROW LEVEL SECURITY`.
+- **Anon key scope:** What mutating operations (INSERT, UPDATE, DELETE) does the code perform using the anon/public key? Write operations via the anon key without restrictive RLS policies are accessible to any unauthenticated user.
+- **SECURITY DEFINER functions called with user input:** RPC calls (`.rpc('function_name', args)`) where the target function is `SECURITY DEFINER` run with the definer's permissions and bypass the caller's RLS context. If user-controlled values are passed as arguments, assess whether the function enforces its own access control.
+- **Migration safety:** Do any migration files use `ADD COLUMN NOT NULL` without a default, `DROP TABLE`, or `CREATE INDEX` without `CONCURRENTLY`? These acquire table-level locks that stall production traffic.
+
 ---
 
 ## Phase 3 — Tool Output Triage
@@ -236,7 +270,7 @@ Confirmed true positives from Phase 3. Do not only copy tool output verbatim —
 
 * Severity: High | Medium | Low
 * OWASP: A0X – [Category Name]
-* Source: npm audit | Semgrep | gitleaks | njsscan | retire.js | htmlhint | license-checker | scancode | socket.dev
+* Source: npm audit | Semgrep | gitleaks | njsscan | retire.js | htmlhint | supabase-skills | license-checker | scancode | socket.dev
 * Business Impact: [Why this matters specifically in this application, not the generic risk class]
 * Recommendation: [Specific fix]
 ```
