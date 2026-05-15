@@ -266,6 +266,21 @@ The following are either covered by the Phase 0 tools or are explicitly out of s
 **Step 1 — Tool Scans and Context (sequential, must complete before Step 2)**
 Run all Phase 0 tool scans using your bash tool — including the optional license-checker and socket.dev scans if available. Then complete Phase 1 codebase context research using file-reading tools. Record all output before proceeding.
 
+**Scope Gate (evaluate before Step 2)**
+
+Check both conditions:
+
+1. **No tool output** — every Phase 0 tool returned NOT RUN, exit 127, or an empty result set (npm audit ENOLOCK counts as NOT RUN; license-checker returning `{}` counts as empty).
+2. **No JS surface area** — the diff contains no `.js`, `.ts`, `.jsx`, `.tsx`, `.mjs`, `.cjs` files and no `package.json`, `package-lock.json`, or `yarn.lock` changes.
+
+If **both** are true: output the following and stop. Do not launch sub-tasks.
+
+> `No high-confidence security vulnerabilities found in this changeset. Scope: no npm/JS surface area — all Phase 0 tool scans returned no applicable output.`
+
+If either condition is false (a tool produced output, or JS/TS files are in the diff), proceed to Step 2.
+
+---
+
 **Step 2 — Parallel Analysis (two sub-tasks, launched simultaneously)**
 
 *Sub-task A — Semantic Analysis:*
