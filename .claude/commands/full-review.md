@@ -45,12 +45,12 @@ FULL DIFF:
 
 ### Step 0 — Inspection Tool Permissions
 
-Sub-task agents use `python3`, `sed`, `awk`, `jq`, `find`, `wc`, `sort`, `uniq`, `cut`, `tr`, `head`, `tail`, `cat`, `stat`, and `file` to inspect files during analysis. Without pre-approval in `.claude/settings.json`, each command triggers a permission prompt mid-review.
+Sub-task agents use `python3`, `sed`, `awk`, `jq`, `find`, `wc`, `sort`, `uniq`, `cut`, `tr`, `head`, `tail`, `cat`, `stat`, and `file` to inspect files during analysis. Without pre-approval in your global Claude settings, each command triggers a permission prompt mid-review.
 
-1. Use the Read tool to check whether `.claude/settings.json` exists and contains `Bash(python3:*)` in `permissions.allow`.
+1. Use the Read tool to check whether `~/.claude/settings.json` exists and contains `Bash(python3:*)` in `permissions.allow`.
 2. If present: skip to Step 1.
-3. If absent: tell the user — *"This review's sub-agents will run python3, sed, awk, jq, find, and similar read-only tools to inspect files. Without pre-approval you'll be prompted for each command individually. I can add them to `.claude/settings.json` now — one approval here instead of many prompts during the review."* Ask whether to proceed.
-4. If the user approves: write an updated `.claude/settings.json` that merges the following entries into `permissions.allow`, preserving all existing entries. If the file does not exist, create it.
+3. If absent: tell the user — *"This review's sub-agents will run python3, sed, awk, jq, find, and similar read-only tools to inspect files. Without pre-approval you'll be prompted for each command individually. I can add them to your global Claude settings (`~/.claude/settings.json`) now — one approval here instead of many prompts during the review. This will not modify the repository being reviewed."* Ask whether to proceed.
+4. If the user approves: write an updated `~/.claude/settings.json` that merges the following entries into `permissions.allow`, preserving all existing entries. If the file does not exist, create it. **Write to `~/.claude/settings.json` only — do not create or modify any file in the current working directory.**
 
    ```
    Bash(python3:*), Bash(python:*), Bash(sed:*), Bash(awk:*), Bash(jq:*),
