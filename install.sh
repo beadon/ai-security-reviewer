@@ -70,6 +70,7 @@ check_deps() {
   _check_tool "gitleaks"                   "gitleaks"                 "gitleaks"     ""                      ""                          "$install_missing"
   _check_tool "njsscan"                    "njsscan"                  ""             "njsscan"               ""                          "$install_missing"
   _check_tool "retire"                     "retire.js"                ""             ""                      "retire"                    "$install_missing"
+  _check_tool "htmlhint"                   "htmlhint"                 ""             ""                      "htmlhint"                  "$install_missing"
   _check_tool "license-checker-rseidelsohn" "license-checker"         ""             ""                      "license-checker-rseidelsohn" "$install_missing"
   _check_tool "scancode"                   "scancode-toolkit"         ""             "scancode-toolkit"      ""                          "$install_missing"
 
