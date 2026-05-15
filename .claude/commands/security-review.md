@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(gh api:*), Bash(npm audit:*), Bash(semgrep:*), Bash(gitleaks:*), Bash(njsscan:*), Bash(socket:*), Bash(npx license-checker-rseidelsohn:*), Bash(npx @onebeyond/license-checker:*), Bash(scancode:*), Bash(printenv:*), Bash(which:*), Read, Glob, Grep, LS, Task, Write
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git remote show:*), Bash(gh api:*), Bash(npm audit:*), Bash(semgrep:*), Bash(gitleaks:*), Bash(njsscan:*), Bash(retire:*), Bash(socket:*), Bash(npx license-checker-rseidelsohn:*), Bash(npx @onebeyond/license-checker:*), Bash(npx htmlhint:*), Bash(scancode:*), Bash(printenv:*), Bash(which:*), Read, Glob, Grep, LS, Task, Write
 description: Security review for npm/JS — automated tool scans followed by AI semantic analysis of what tools cannot catch
 version: "{{VERSION}}"
 ---
@@ -76,9 +76,9 @@ Covers: known CVEs in the dependency tree (OWASP A06).
 
 ### Semgrep
 ```
-semgrep scan --config p/javascript --config p/nodejs --config p/secrets --json . 2>/dev/null
+semgrep scan --config p/javascript --config p/nodejs --config p/secrets --config p/html --json . 2>/dev/null
 ```
-Covers: injection patterns, XSS sinks, prototype pollution, unsafe deserialization, hardcoded credentials (OWASP A02, A03, A08).
+Covers: injection patterns, XSS sinks, prototype pollution, unsafe deserialization, hardcoded credentials, HTML inline event handlers, `javascript:` URIs, and missing security attributes (OWASP A02, A03, A05, A08).
 
 ### gitleaks
 ```
@@ -91,6 +91,18 @@ Covers: secrets and tokens committed to the repository (OWASP A02).
 njsscan --json . 2>/dev/null
 ```
 Covers: Node.js/Express misconfigurations, missing security middleware (OWASP A05, A07).
+
+### Retire.js *(optional — CDN/inline script dependency CVEs)*
+```
+retire --outputformat json --path . 2>/dev/null; true
+```
+Covers: known CVEs in CDN-loaded or inline script dependencies that `npm audit` cannot see — e.g., a library loaded via `<script src>` tag with a pinned version that has a known exploit (OWASP A06). Particularly relevant for HTML apps that load libraries outside npm.
+
+### HTMLHint *(optional — HTML security attributes)*
+```
+npx htmlhint --format json '**/*.html' 2>/dev/null; true
+```
+Covers: missing `Content-Security-Policy` meta tags, inline event handlers (`onclick`, `onload`), missing `rel="noopener noreferrer"` on `target="_blank"` links, form fields missing `autocomplete="off"` for sensitive inputs (OWASP A05).
 
 ### License Checker *(optional — free)*
 ```
@@ -137,6 +149,7 @@ Use file-reading and search tools to understand the project before analyzing the
 - **Security middleware:** Is helmet, cors, csurf, express-rate-limit, or equivalent present? How is it configured?
 - **Data flow:** How does user input travel from HTTP handlers to persistence (DB queries, file writes, cache) and back out?
 - **Validation layer:** What sanitization and validation libraries are in use (express-validator, joi, zod, yup)? Where are they applied?
+- **HTML surface area:** If the project contains `.html` files with embedded `<script>` blocks or inline event handlers, treat all inline JavaScript as first-class JS surface area subject to the same analysis as `.js` files. Note whether the app is a serverless SPA (no backend — Supabase, Firebase, or similar direct DB access) vs. a server-backed app, as this changes the scope of client-side auth analysis.
 
 ---
 
@@ -223,7 +236,7 @@ Confirmed true positives from Phase 3. Do not only copy tool output verbatim —
 
 * Severity: High | Medium | Low
 * OWASP: A0X – [Category Name]
-* Source: npm audit | Semgrep | gitleaks | njsscan | license-checker | scancode | socket.dev
+* Source: npm audit | Semgrep | gitleaks | njsscan | retire.js | htmlhint | license-checker | scancode | socket.dev
 * Business Impact: [Why this matters specifically in this application, not the generic risk class]
 * Recommendation: [Specific fix]
 ```
@@ -238,15 +251,17 @@ If no findings survive filtering in either section: output `No high-confidence s
 |----------|----------|
 | **High** | Directly exploitable: RCE, auth bypass, data breach, privilege escalation |
 | **Medium** | Requires specific conditions but significant impact when met |
-| **Low** | Defense-in-depth — only include if confidence is 9 or 10 |
+| **Low** | Defense-in-depth — exposure without immediate exploitability |
 
 | Confidence | Meaning |
 |------------|---------|
 | 9–10 | Certain exploit path; attack is concrete and impact is clear |
-| 8–9  | Clear vulnerability with a known exploitation method |
-| < 8  | Do NOT report |
+| 7–8  | Clear vulnerability with a known exploitation method |
+| 4–6  | Probable vulnerability; requires specific conditions to trigger |
+| 2–3  | Weak signal — worth noting but unconfirmed |
+| < 2  | Do NOT report |
 
-**Minimum threshold to report: 8/10**
+**Minimum threshold to report: 2/10**
 
 ---
 
@@ -267,7 +282,7 @@ The following are either covered by the Phase 0 tools or are explicitly out of s
 11. Regex injection or ReDoS.
 12. Security findings in documentation files (`.md`, `.txt`, `.rst`).
 13. Absence of audit logs.
-14. Missing authorization in client-side JS/TS — the server is responsible.
+14. Missing authorization in client-side JS/TS — the server is responsible. **Exception:** if the application has no backend server (pure static SPA with direct Supabase, Firebase, or similar client-side DB access), client-side auth logic IS in scope because there is no server-side enforcement fallback.
 15. XSS in React or Angular unless `dangerouslySetInnerHTML`, `bypassSecurityTrustHtml`, or equivalent unsafe APIs are explicitly used.
 16. Theoretical race conditions — only report TOCTOU with a realistically exploitable concurrent window.
 17. Vulnerabilities in Jupyter notebooks without a concrete, triggerable attack path.
@@ -286,18 +301,34 @@ The following are either covered by the Phase 0 tools or are explicitly out of s
 **Step 1 — Tool Scans and Context (sequential, must complete before Step 2)**
 Run all Phase 0 tool scans using your bash tool — including the optional license-checker and socket.dev scans if available. Then complete Phase 1 codebase context research using file-reading tools. Record all output before proceeding.
 
-**Scope Gate (evaluate before Step 2)**
+**Codebase Mode (check first, before the scope gate)**
+
+If `git diff --merge-base origin/HEAD` returned no output (clean working tree, or reviewing the default branch directly with no unreviewed changes):
+
+- **Do not apply the scope gate below.**
+- In Phase 2, instead of analyzing a diff, identify the **top 10 most security-relevant files** in the codebase using these heuristics (in priority order):
+  1. Files containing auth, login, session, token, password, or permission logic
+  2. Files with DB writes — Supabase, Firebase, ORM, or raw SQL calls that mutate data
+  3. Files handling user input: form submissions, fetch/XHR handlers, file uploads
+  4. Files using `innerHTML`, `eval`, `Function()`, `document.write`, or `dangerouslySetInnerHTML`
+  5. API route or handler entry points
+- Analyze those files in their entirety using all 8 Phase 2 categories, not against a diff.
+- Phase 0 tool scans still run against the full directory — their output is unchanged.
+
+---
+
+**Scope Gate (evaluate before Step 2, only when a diff exists)**
 
 Check both conditions:
 
 1. **No tool output** — every Phase 0 tool returned NOT RUN, exit 127, or an empty result set (npm audit ENOLOCK counts as NOT RUN; license-checker returning `{}` counts as empty).
-2. **No JS surface area** — the diff contains no `.js`, `.ts`, `.jsx`, `.tsx`, `.mjs`, `.cjs` files and no `package.json`, `package-lock.json`, or `yarn.lock` changes.
+2. **No JS/HTML surface area** — the diff contains no `.js`, `.ts`, `.jsx`, `.tsx`, `.mjs`, `.cjs`, `.html`, `.htm` files and no `package.json`, `package-lock.json`, or `yarn.lock` changes.
 
 If **both** are true: output the following and stop. Do not launch sub-tasks.
 
-> `No high-confidence security vulnerabilities found in this changeset. Scope: no npm/JS surface area — all Phase 0 tool scans returned no applicable output.`
+> `No high-confidence security vulnerabilities found in this changeset. Scope: no npm/JS/HTML surface area — all Phase 0 tool scans returned no applicable output.`
 
-If either condition is false (a tool produced output, or JS/TS files are in the diff), proceed to Step 2.
+If either condition is false (a tool produced output, or JS/TS/HTML files are in the diff), proceed to Step 2.
 
 ---
 
@@ -312,4 +343,4 @@ The prompt must include: the complete raw output from all Phase 0 tool scans (in
 Instruction to sub-task: for each tool finding return: tool name, file or package name, line if available, classification (TRUE_POSITIVE or FALSE_POSITIVE), one-sentence rationale, and for true positives a description of the specific business impact in this application. For license findings, note the license type, the affected package, and whether it is a direct or transitive dependency. For socket.dev findings, note the specific supply chain risk category.
 
 **Step 3 — Final Report**
-Discard any semantic finding with confidence < 6. Discard any tool finding classified FALSE_POSITIVE. Format surviving findings using the Output Format above — Section A for semantic findings, Section B for enriched tool findings. Output the report to a file for human review.  If this is an interactive session with the user, ask the user for input on challenging areas or guidance.
+Discard any semantic finding with confidence < 2. Discard any tool finding classified FALSE_POSITIVE. Format surviving findings using the Output Format above — Section A for semantic findings, Section B for enriched tool findings. Output the report to a file for human review.  If this is an interactive session with the user, ask the user for input on challenging areas or guidance.
