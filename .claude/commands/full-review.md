@@ -4,7 +4,7 @@ description: Full security review — orchestrates parallel code-level and infra
 version: "{{VERSION}}"
 ---
 
-> !`_cv="{{VERSION}}"; _lv=$(gh api repos/beadon/ai-security-reviewer/releases/latest --jq .tag_name 2>/dev/null || echo ""); [[ "$_cv" == v* ]] && [ -n "$_lv" ] && [ "$_cv" != "$_lv" ] && echo "⚠️  Update available: $_lv (installed: $_cv) — https://github.com/beadon/ai-security-reviewer/releases" || true`
+> !`gh api repos/beadon/ai-security-reviewer/releases/latest --jq 'if .tag_name != "{{VERSION}}" and "{{VERSION}}" != "development" then "⚠️  Update available: " + .tag_name + " (installed: {{VERSION}})" else empty end' 2>/dev/null`
 
 ## Role
 
