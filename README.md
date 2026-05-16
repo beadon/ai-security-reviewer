@@ -209,17 +209,23 @@ export SOCKET_API_KEY=your_api_key_here
 Clone any public or private repository you have access to, then run the review from within it.
 
 ```bash
-# Clone and review the default branch
-gh repo clone <org>/<repo> /tmp/target
+# Clone and review the default branch (SSH)
+git clone git@github.com:<org>/<repo>.git /tmp/target
+cd /tmp/target
+
+# Or via HTTPS
+git clone https://github.com/<org>/<repo>.git /tmp/target
 cd /tmp/target
 ```
 
 For a specific branch:
 
 ```bash
-gh repo clone <org>/<repo> /tmp/target -- --branch <branch-name>
+git clone --branch <branch-name> git@github.com:<org>/<repo>.git /tmp/target
 cd /tmp/target
 ```
+
+If you have the GitHub CLI installed, `gh repo clone <org>/<repo> /tmp/target` is equivalent and handles auth automatically.
 
 Then in Claude Code (opened in `/tmp/target`):
 
