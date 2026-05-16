@@ -29,6 +29,97 @@ The security scanning tools (Semgrep, gitleaks, njsscan) are **optional for loca
 
 ---
 
+<details>
+<summary><strong>First-Time Setup (new users — start here)</strong></summary>
+
+### What this is
+
+This tool adds three slash commands to Claude Code that run a two-layer security review against your codebase: automated scanners (Semgrep, gitleaks, etc.) followed by AI semantic analysis of what the scanners miss — business logic flaws, authorization errors, and chained vulnerabilities.
+
+You run it from your terminal, inside any project directory.
+
+---
+
+### Step 1 — Install Claude Code
+
+Open **Terminal** on your Mac (or your OS terminal) and run:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+Then authenticate it:
+
+```bash
+claude
+```
+
+Follow the prompts to log in with your Anthropic account. Once you're at the `claude>` prompt, type `/exit` to quit — setup is done.
+
+> **VS Code users:** Claude Code has a VS Code extension (search "Claude Code" in the Extensions panel), but the security reviewer runs from a terminal. Use VS Code's built-in terminal (`Terminal → New Terminal`) so you can stay in your editor while running reviews.
+
+---
+
+### Step 2 — Install the security reviewer
+
+```bash
+git clone https://github.com/beadon/ai-security-reviewer
+cd ai-security-reviewer
+./install.sh --global --with-deps
+```
+
+`--global` makes the three review commands available in every project on your machine. `--with-deps` installs the scanning tools (Semgrep, gitleaks, etc.) via Homebrew and pip.
+
+If you hit permission errors on `npm install -g`, see the [npm EACCES fix](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally) — never use `sudo npm`.
+
+---
+
+### Step 3 — Run your first review
+
+Navigate to the project you want to review and open Claude Code:
+
+```bash
+cd /path/to/your/project
+claude
+```
+
+Then type one of these at the `claude>` prompt:
+
+| Command | What it reviews |
+|---|---|
+| `/full-review` | Everything — code and infrastructure (start here) |
+| `/security-review` | JavaScript/npm code only |
+| `/arch-review` | Dockerfiles, Terraform, CI/CD config only |
+
+For most people, `/full-review` is the right starting point.
+
+---
+
+### What to expect
+
+The review takes 2–5 minutes. It will:
+
+1. Run the automated scanners against your codebase
+2. Have Claude triage the results and reason about what the scanners missed
+3. Print a markdown report with findings grouped by severity
+
+Findings below 2/10 confidence are suppressed — the goal is zero false positives.
+
+---
+
+### GitHub CLI (optional but recommended)
+
+The tool can annotate pull requests on GitHub. If you want that, install and authenticate the GitHub CLI:
+
+```bash
+brew install gh
+gh auth login
+```
+
+</details>
+
+---
+
 ## Installation
 
 ```bash
@@ -419,7 +510,7 @@ Each finding includes: severity (High/Medium/Low), OWASP category, confidence sc
 
 ## Confidence Threshold
 
-Findings below **8/10** confidence are suppressed. The goal is zero false positives surfaced to the developer — a missed finding is cheaper than alert fatigue.
+Findings below **2/10** confidence are suppressed. The goal is zero false positives surfaced to the developer — a missed finding is cheaper than alert fatigue.
 
 ---
 
